@@ -1,3 +1,5 @@
-
-# Codebase wiki — compiled artifact, regenerated from source
-.codebase-wiki/
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+.DS_Store

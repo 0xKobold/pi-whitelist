@@ -1,6 +1,6 @@
 {
   "name": "@0xkobold/pi-whitelist",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Tri-state tool permission system (allow/deny/ask) for AI agent tool invocations",
   "type": "module",
   "main": "./dist/index.js",

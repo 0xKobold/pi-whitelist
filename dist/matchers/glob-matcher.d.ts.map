@@ -1,0 +1,1 @@
+{"version":3,"file":"glob-matcher.d.ts","sourceRoot":"","sources":["../../src/matchers/glob-matcher.ts"],"names":[],"mappings":"AACA,OAAO,KAAK,EAAE,WAAW,EAAE,MAAM,eAAe,CAAA;AAEhD,qBAAa,WAAY,YAAW,WAAW;IAC7C,SAAgB,QAAQ,OAAM;IAE9B,OAAO,CAAC,WAAW,EAAE,MAAM,GAAG,SAAS,EAAE,KAAK,EAAE,MAAM,GAAG,SAAS,GAAG,OAAO;CAS7E"}

@@ -1,0 +1,1 @@
+{"version":3,"file":"file-matcher.d.ts","sourceRoot":"","sources":["../../src/matchers/file-matcher.ts"],"names":[],"mappings":"AACA,OAAO,KAAK,EAAE,WAAW,EAAE,MAAM,eAAe,CAAA;AAQhD,qBAAa,WAAY,YAAW,WAAW;IAC7C,SAAgB,QAAQ,cAAa;IAErC,OAAO,CAAC,WAAW,EAAE,MAAM,GAAG,SAAS,EAAE,KAAK,EAAE,MAAM,GAAG,SAAS,GAAG,OAAO;CAW7E"}

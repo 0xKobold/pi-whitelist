@@ -1,0 +1,1 @@
+{"version":3,"file":"command-matcher.d.ts","sourceRoot":"","sources":["../../src/matchers/command-matcher.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,WAAW,EAAE,MAAM,eAAe,CAAA;AAWhD,qBAAa,cAAe,YAAW,WAAW;IAChD,SAAgB,QAAQ,UAAS;IAEjC,OAAO,CAAC,WAAW,EAAE,MAAM,GAAG,SAAS,EAAE,KAAK,EAAE,MAAM,GAAG,SAAS,GAAG,OAAO;IAa5E,OAAO,CAAC,aAAa;CAOtB"}

@@ -965,7 +965,7 @@ planManager.check({ toolName: 'Read' })  // normally auto-allowed
 
 ## 15. Changelog & Versioning
 
-### v1.0.0
+### v0.1.0
 
 Initial release with core features:
 - Three-way permission decisions (allow, deny, ask)
@@ -977,13 +977,13 @@ Initial release with core features:
 - Zod validation for all settings and rules
 - Read-only tool auto-allow classification
 
-### Planned v1.1
+### Planned v0.1.1
 
 - Hook system for pre/post permission check interception
 - Permission logging/audit trail
 - Diff-based permission suggestions (show what will change before applying)
 
-### Planned v2.0
+### Planned v0.2.0
 
 - ML-based auto-classifier (Claude Code's `auto` mode analog)
 - IDE bridge permission proxy

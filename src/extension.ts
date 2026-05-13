@@ -2,7 +2,8 @@
  * pi-whitelist — Tool Permission Extension for pi-coding-agent
  *
  * Gates all tool calls through the tri-state permission system (allow/deny/ask).
- * Uses ctx.ui.input() for number-key selection (1/2/3 + Enter).
+ * Uses a hybrid prompt: ctx.ui.select() for arrow-key nav + ctx.ui.onTerminalInput()
+ * for instant number-key selection (press 1/2/3 without Enter).
  * Supports denyPaths, smart pattern suggestions, progressive learning, and dangerous overrides.
  */
 
@@ -28,6 +29,70 @@ import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 const log = {
 	info: (msg: string, ...args: unknown[]) => console.log(`[pi-whitelist] ${msg}`, ...args),
 	warn: (msg: string, ...args: unknown[]) => console.warn(`[pi-whitelist] ${msg}`, ...args),
+};
+
+/**
+ * Hybrid prompt that accepts both arrow-key selection AND number-key shortcuts.
+ *
+ * Shows a select dialog (navigate with arrows, confirm with Enter)
+ * AND listens for raw number keypresses (1-9) for instant selection.
+ * Whichever input method fires first wins.
+ *
+ * Returns the 1-based option number, or 0 if cancelled.
+ */
+async function numberedPrompt(
+	ctx: ExtensionContext,
+	title: string,
+	options: string[],
+): Promise<number> {
+	if (!ctx.hasUI) return 0;
+
+	return new Promise<number>((resolve) => {
+		let settled = false;
+
+		// Listen for number keypresses (1-9) for instant selection
+		const unsubscribe = ctx.ui.onTerminalInput((data: string) => {
+			if (settled) return undefined;
+			const num = parseInt(data, 10);
+			if (num >= 1 && num <= options.length) {
+				settled = true;
+				resolve(num);
+				return { consume: true };
+			}
+			return undefined;
+		});
+
+		// Also show select dialog (arrow keys + Enter)
+		ctx.ui.select(title, options).then((choice) => {
+			if (settled) {
+				unsubscribe();
+				return;
+			}
+			settled = true;
+			unsubscribe();
+			if (!choice) {
+				resolve(0); // cancelled
+				return;
+			}
+			const idx = options.indexOf(choice);
+			resolve(idx >= 0 ? idx + 1 : 0);
+		}).catch(() => {
+			if (!settled) {
+				settled = true;
+				unsubscribe();
+				resolve(0);
+			}
+		});
+
+		// Safety: clean up listener if neither fires within 5 minutes
+		setTimeout(() => {
+			if (!settled) {
+				settled = true;
+				unsubscribe();
+				resolve(0);
+			}
+		}, 300_000);
+	});
 }
 
 /** Extract ruleContent from a tool call event input */
@@ -116,14 +181,6 @@ function persistRule(filePath: string, rule: PermissionRuleValue, behavior: Perm
 	writeFileSync(filePath, JSON.stringify(settings, null, 2), "utf-8");
 }
 
-/** Parse user input as a numeric choice (1-9). Returns 0 if invalid/cancelled. */
-function parseChoice(input: string | undefined, max: number): number {
-	if (!input) return 0;
-	const num = parseInt(input.trim(), 10);
-	if (num >= 1 && num <= max) return num;
-	return 0;
-}
-
 export default async function whitelistExtension(pi: ExtensionAPI): Promise<void> {
 	log.info("Loading pi-whitelist extension...");
 
@@ -153,14 +210,6 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 
 	log.info(`Ready — mode: ${mode}, global: ${globalStats ? `${globalStats.totalRules}r + ${globalStats.totalDenyPaths}p` : 'none'}, project: ${projectStats ? `${projectStats.totalRules}r + ${projectStats.totalDenyPaths}p` : 'none'}, local: ${localStats ? `${localStats.totalRules}r + ${localStats.totalDenyPaths}p` : 'none'}`);
 
-	/** Apply an "allow always" rule with the given pattern */
-	async function allowAlways(toolName: string, pattern: string | undefined): Promise<void> {
-		const ruleContent = pattern ?? generateSmartDefault(toolName, undefined);
-		if (!ruleContent) return;
-		manager.addRule({ toolName, ruleContent }, "allow", "localSettings");
-		try { persistRule(localSettingsPath, { toolName, ruleContent }, "allow"); } catch (err) { log.warn(`Failed to persist: ${err}`); }
-	}
-
 	// ──── Tool Call Gate ────
 	pi.on("tool_call", async (event: any, ctx: ExtensionContext) => {
 		const toolName = event.toolName as string;
@@ -173,15 +222,15 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 				return { block: true, reason: dangerousOverride.message };
 			}
 			const label = ruleContent ? `${toolName}: ${ruleContent}` : toolName;
-			const input = await ctx.ui.input(
-				`⚠️  ${label}\nDangerous command. Allow anyway?\n\n1 Allow once\n2 Allow always\n3 Deny`,
-				"1-3",
+			const choice = await numberedPrompt(ctx,
+				`⚠️  ${label}\n\nDangerous command. Allow anyway?`,
+				["1 Allow once", "2 Allow always", "3 Deny"],
 			);
-			const choice = parseChoice(input, 3);
 
 			if (choice === 2) {
 				const pattern = generateSmartDefault(toolName, ruleContent);
-				await allowAlways(toolName, pattern);
+				manager.addRule({ toolName, ruleContent: pattern }, "allow", "localSettings");
+				try { persistRule(localSettingsPath, { toolName, ruleContent: pattern }, "allow"); } catch (err) { log.warn(`Failed to persist: ${err}`); }
 				return undefined;
 			}
 			if (choice === 1) {
@@ -224,11 +273,10 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 
 		// ── No smart suggestions: simple 3-option prompt ──
 		if (suggestions.length === 0) {
-			const input = await ctx.ui.input(
-				`🔐 ${label}\n\n1 Allow once\n2 Allow always\n3 Deny`,
-				"1-3",
+			const choice = await numberedPrompt(ctx,
+				`🔐 ${label}`,
+				["1 Allow once", "2 Allow always", "3 Deny"],
 			);
-			const choice = parseChoice(input, 3);
 
 			if (choice === 1) {
 				// Check progressive learning
@@ -262,20 +310,27 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 		const broadSuggestion = suggestions[suggestions.length - 1]; // e.g. "git *"
 
 		const hasTwoScopes = specificSuggestion && broadSuggestion && specificSuggestion.pattern !== broadSuggestion.pattern;
-		const maxOption = hasTwoScopes ? 4 : 3;
 
-		let prompt: string;
+		let options: string[];
 		if (hasTwoScopes) {
-			prompt = `🔐 ${label}\n\n1 Allow once\n2 Always: ${specificSuggestion.label}\n3 Always: ${broadSuggestion.label}\n4 Deny`;
+			options = [
+				"1 Allow once",
+				`2 Always: ${specificSuggestion.label}`,
+				`3 Always: ${broadSuggestion.label}`,
+				"4 Deny",
+			];
 		} else {
-			prompt = `🔐 ${label}\n\n1 Allow once\n2 Always: ${specificSuggestion?.label ?? "all"}\n3 Deny`;
+			options = [
+				"1 Allow once",
+				`2 Always: ${specificSuggestion?.label ?? "all"}`,
+				"3 Deny",
+			];
 		}
 
-		const input = await ctx.ui.input(prompt, "1-4");
-		const choice = parseChoice(input, maxOption);
+		const choice = await numberedPrompt(ctx, `🔐 ${label}`, options);
 
 		if (choice === 1) {
-			// Allow once + progressive learning check
+			// Allow once + progressive learning
 			const suggestion = recordAllowOnce(tracker, toolName, ruleContent);
 			if (suggestion) {
 				const autoAccept = await ctx.ui.confirm(
@@ -304,7 +359,7 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 			return undefined;
 		}
 
-		// choice === maxOption (Deny) or 0 (cancelled) or invalid
+		// maxOption = Deny, 0 = cancelled, or invalid
 		return { block: true, reason: `Blocked by user: ${label}` };
 	});
 

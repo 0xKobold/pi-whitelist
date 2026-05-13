@@ -1,6 +1,6 @@
 {
   "name": "@0xkobold/pi-whitelist",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tri-state tool permission system (allow/deny/ask) for AI agent tool invocations",
   "type": "module",
   "main": "./dist/index.js",
@@ -31,6 +31,14 @@
     "dist",
     "SKILL.md"
   ],
+  "pi": {
+    "extensions": [
+      "./dist/extension.js"
+    ],
+    "skills": [
+      "./SKILL.md"
+    ]
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
@@ -38,6 +46,7 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
+    "pi-package",
     "permissions",
     "whitelist",
     "ai-agent",
@@ -48,14 +57,18 @@
     "type": "git",
     "url": "https://github.com/0xKobold/pi-whitelist.git"
   },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.74.0"
+  },
   "devDependencies": {
-    "typescript": "^5.7.0",
-    "vitest": "^3.1.0",
+    "@earendil-works/pi-coding-agent": "^0.74.0",
     "@types/node": "^22.0.0",
-    "@types/picomatch": "^4.0.0"
+    "@types/picomatch": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.1.0"
   },
   "dependencies": {
-    "zod": "^3.24.0",
-    "picomatch": "^4.0.0"
+    "picomatch": "^4.0.0",
+    "zod": "^3.24.0"
   }
 }

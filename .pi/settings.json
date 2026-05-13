@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Kobold_status",
+      "Bash(cd *)"
+    ],
+    "deny": [],
+    "ask": [],
+    "additionalDirectories": []
+  }
+}

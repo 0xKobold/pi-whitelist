@@ -172,11 +172,14 @@ export declare const permissionSettingsSchema: z.ZodObject<{
         allow: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
         deny: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
         ask: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        /** Path glob patterns to deny for Read/Edit/Write tools. Expanded into deny rules on load. */
+        denyPaths: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
         additionalDirectories: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
     }, "strip", z.ZodTypeAny, {
         allow: string[];
         deny: string[];
         ask: string[];
+        denyPaths: string[];
         additionalDirectories: string[];
         defaultMode?: "acceptEdits" | "bypassPermissions" | "default" | "dontAsk" | "plan" | undefined;
     }, {
@@ -184,6 +187,7 @@ export declare const permissionSettingsSchema: z.ZodObject<{
         deny?: string[] | undefined;
         ask?: string[] | undefined;
         defaultMode?: "acceptEdits" | "bypassPermissions" | "default" | "dontAsk" | "plan" | undefined;
+        denyPaths?: string[] | undefined;
         additionalDirectories?: string[] | undefined;
     }>;
 }, "strip", z.ZodTypeAny, {
@@ -191,6 +195,7 @@ export declare const permissionSettingsSchema: z.ZodObject<{
         allow: string[];
         deny: string[];
         ask: string[];
+        denyPaths: string[];
         additionalDirectories: string[];
         defaultMode?: "acceptEdits" | "bypassPermissions" | "default" | "dontAsk" | "plan" | undefined;
     };
@@ -200,6 +205,7 @@ export declare const permissionSettingsSchema: z.ZodObject<{
         deny?: string[] | undefined;
         ask?: string[] | undefined;
         defaultMode?: "acceptEdits" | "bypassPermissions" | "default" | "dontAsk" | "plan" | undefined;
+        denyPaths?: string[] | undefined;
         additionalDirectories?: string[] | undefined;
     };
 }>;

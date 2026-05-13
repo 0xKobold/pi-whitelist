@@ -3,6 +3,7 @@ const DEFAULT_SETTINGS = {
         allow: [],
         deny: [],
         ask: [],
+        denyPaths: [],
         additionalDirectories: [],
     },
 };
@@ -13,6 +14,7 @@ export function mergeSettings(sources) {
     const allowSet = new Set();
     const denySet = new Set();
     const askSet = new Set();
+    const denyPathsSet = new Set();
     const dirSet = new Set();
     for (const source of sources) {
         if (source.permissions.defaultMode) {
@@ -24,6 +26,8 @@ export function mergeSettings(sources) {
             denySet.add(rule);
         for (const rule of source.permissions.ask)
             askSet.add(rule);
+        for (const path of source.permissions.denyPaths ?? [])
+            denyPathsSet.add(path);
         for (const dir of source.permissions.additionalDirectories)
             dirSet.add(dir);
     }
@@ -33,6 +37,7 @@ export function mergeSettings(sources) {
             allow: [...allowSet],
             deny: [...denySet],
             ask: [...askSet],
+            denyPaths: [...denyPathsSet],
             additionalDirectories: [...dirSet],
         },
     };

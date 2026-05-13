@@ -13,6 +13,8 @@ export { MemorySettingsStore, FileSettingsStore, mergeSettings } from './storage
 export { READ_ONLY_TOOLS, isReadOnly } from './readonly.js';
 export { DANGEROUS_PATTERNS } from './dangerous.js';
 export { DEFAULT_ALLOW_RULES, SOURCE_PRECEDENCE } from './constants.js';
+// Deny paths utility
+export { expandDenyPaths, FILE_TOOLS } from './deny-paths.js';
 // Errors
 export { PermissionError, RuleParseError, StorageError, MatcherError } from './errors.js';
 //# sourceMappingURL=index.js.map

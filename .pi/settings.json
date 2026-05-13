@@ -15,7 +15,15 @@
       "Bash(grep -n \"pi\\\\.on\\\\|registerCommand\\\\|registerTool\\\\|export default\" /home/moika/.local/share/mise/installs/node/25.1.0/lib/node_modules/@0xkobold/pi-kobold/dist/index.js | head -20)",
       "Bash(cat /home/moika/.local/share/mise/installs/node/25.1.0/lib/node_modules/@0xkobold/pi-kobold/package.json | python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('pi',{}\\), indent=2\\)\\)\")",
       "Write(/home/moika/Documents/code/pi-whitelist/src/extension.ts)",
-      "Bash(pi *)"
+      "Bash(pi *)",
+      "Edit(/home/moika/Documents/code/pi-whitelist/src/storage/interface.ts)",
+      "Edit(/home/moika/Documents/code/pi-whitelist/src/types/schemas.ts)",
+      "Edit(/home/moika/Documents/code/pi-whitelist/src/storage/memory-store.ts)",
+      "Edit(/home/moika/Documents/code/pi-whitelist/src/storage/file-store.ts)",
+      "Edit(/home/moika/Documents/code/pi-whitelist/src/index.ts)",
+      "Write(/home/moika/Documents/code/pi-whitelist/src/deny-paths.ts)",
+      "Bash(grep -n \"FILE_TOOLS\\\\|expandDenyPaths\" /home/moika/Documents/code/pi-whitelist/src/extension.ts)",
+      "Write(/home/moika/Documents/code/pi-whitelist/tests/deny-paths.test.ts)"
     ],
     "deny": [],
     "ask": [],

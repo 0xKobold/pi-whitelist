@@ -5,6 +5,7 @@ const DEFAULT_SETTINGS: PermissionSettings = {
     allow: [],
     deny: [],
     ask: [],
+    denyPaths: [],
     additionalDirectories: [],
   },
 }

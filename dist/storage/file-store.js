@@ -7,6 +7,7 @@ const DEFAULT_SETTINGS = {
         allow: [],
         deny: [],
         ask: [],
+        denyPaths: [],
         additionalDirectories: [],
     },
 };

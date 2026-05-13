@@ -4,6 +4,8 @@ export interface PermissionSettings {
     allow: string[]
     deny: string[]
     ask: string[]
+    /** Path glob patterns to deny for Read/Edit/Write tools. Expanded into deny rules on load. */
+    denyPaths: string[]
     additionalDirectories: string[]
   }
 }

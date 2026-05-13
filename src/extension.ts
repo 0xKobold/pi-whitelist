@@ -3,6 +3,7 @@
  *
  * Gates all tool calls through the tri-state permission system (allow/deny/ask).
  * Reads rules from .pi/settings.json (project) and ~/.pi/agent/settings.json (global).
+ * Supports denyPaths — gitignore-style path globs that auto-expand to deny rules.
  * Prompts user for "ask" decisions in interactive mode, blocks in non-interactive.
  * Registers /whitelist command for managing rules.
  */
@@ -13,6 +14,10 @@ import {
 	parseRuleString,
 	serializeRuleString,
 } from "./index.js";
+import {
+	expandDenyPaths,
+	FILE_TOOLS,
+} from "./deny-paths.js";
 import type { PermissionBehavior, PermissionRuleValue, PermissionMode } from "./types/index.js";
 
 import { homedir } from "node:os";
@@ -47,12 +52,26 @@ function extractRuleContent(toolName: string, input: Record<string, unknown>): s
 	}
 }
 
+/** Tools that operate on file paths — denyPaths expands into deny rules for these */
+
 /** Read permission settings from a JSON file */
-function readPermissionRules(filePath: string): { allow: string[]; deny: string[]; ask: string[] } | null {
+function readPermissionSettings(filePath: string): {
+	allow: string[]
+	deny: string[]
+	ask: string[]
+	denyPaths: string[]
+} | null {
 	if (!existsSync(filePath)) return null;
 	try {
 		const raw = JSON.parse(readFileSync(filePath, "utf-8"));
-		return raw?.permissions ?? null;
+		const perms = raw?.permissions;
+		if (!perms) return null;
+		return {
+			allow: perms.allow ?? [],
+			deny: perms.deny ?? [],
+			ask: perms.ask ?? [],
+			denyPaths: perms.denyPaths ?? [],
+		};
 	} catch {
 		return null;
 	}
@@ -73,7 +92,7 @@ function persistRule(filePath: string, rule: PermissionRuleValue, behavior: Perm
 	}
 
 	if (!settings.permissions) {
-		settings.permissions = { allow: [], deny: [], ask: [], additionalDirectories: [] };
+		settings.permissions = { allow: [], deny: [], ask: [], denyPaths: [], additionalDirectories: [] };
 	}
 
 	const serialized = serializeRuleString(rule);
@@ -105,21 +124,26 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 	});
 
 	// Load persisted rules from settings files
-	const globalRules = readPermissionRules(globalSettingsPath);
-	if (globalRules) {
-		for (const rule of globalRules.allow ?? []) manager.addRule(parseRuleString(rule), "allow", "userSettings");
-		for (const rule of globalRules.deny ?? []) manager.addRule(parseRuleString(rule), "deny", "userSettings");
-		for (const rule of globalRules.ask ?? []) manager.addRule(parseRuleString(rule), "ask", "userSettings");
+	const globalSettings = readPermissionSettings(globalSettingsPath);
+	if (globalSettings) {
+		for (const rule of globalSettings.allow) manager.addRule(parseRuleString(rule), "allow", "userSettings");
+		for (const rule of globalSettings.deny) manager.addRule(parseRuleString(rule), "deny", "userSettings");
+		for (const rule of globalSettings.ask) manager.addRule(parseRuleString(rule), "ask", "userSettings");
+		// Expand denyPaths into deny rules
+		for (const rule of expandDenyPaths(globalSettings.denyPaths)) manager.addRule(parseRuleString(rule), "deny", "userSettings");
 	}
 
-	const projectRules = readPermissionRules(projectSettingsPath);
-	if (projectRules) {
-		for (const rule of projectRules.allow ?? []) manager.addRule(parseRuleString(rule), "allow", "projectSettings");
-		for (const rule of projectRules.deny ?? []) manager.addRule(parseRuleString(rule), "deny", "projectSettings");
-		for (const rule of projectRules.ask ?? []) manager.addRule(parseRuleString(rule), "ask", "projectSettings");
+	const projectSettings = readPermissionSettings(projectSettingsPath);
+	if (projectSettings) {
+		for (const rule of projectSettings.allow) manager.addRule(parseRuleString(rule), "allow", "projectSettings");
+		for (const rule of projectSettings.deny) manager.addRule(parseRuleString(rule), "deny", "projectSettings");
+		for (const rule of projectSettings.ask) manager.addRule(parseRuleString(rule), "ask", "projectSettings");
+		for (const rule of expandDenyPaths(projectSettings.denyPaths)) manager.addRule(parseRuleString(rule), "deny", "projectSettings");
 	}
 
-	log.info(`Ready — mode: ${mode}, global rules: ${globalRules ? (globalRules.allow?.length ?? 0) + (globalRules.deny?.length ?? 0) : 0}, project rules: ${projectRules ? (projectRules.allow?.length ?? 0) + (projectRules.deny?.length ?? 0) : 0}`);
+	const totalGlobal = globalSettings ? (globalSettings.allow.length + globalSettings.deny.length + globalSettings.ask.length + globalSettings.denyPaths.length) : 0;
+	const totalProject = projectSettings ? (projectSettings.allow.length + projectSettings.deny.length + projectSettings.ask.length + projectSettings.denyPaths.length) : 0;
+	log.info(`Ready — mode: ${mode}, global rules: ${totalGlobal}, project rules: ${totalProject}`);
 
 	// ──── Tool Call Gate ────
 	pi.on("tool_call", async (event: any, ctx: ExtensionContext) => {
@@ -189,7 +213,7 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 
 				if (allRules.length === 0) {
 					ctx.ui.notify(
-						`📋 Whitelist Rules: (none)\n\nMode: ${mode}\n\nUse /whitelist allow <Tool> [pattern] to add rules.\nUse /whitelist deny <Tool> [pattern] to deny tools.`,
+						`📋 Whitelist Rules: (none)\n\nMode: ${mode}\n\nUse /whitelist allow <Tool> [pattern] to add rules.\nUse /whitelist deny <Tool> [pattern] to deny tools.\nUse /whitelist deny-path <glob> to deny file paths.`,
 						"info",
 					);
 				} else {
@@ -213,6 +237,19 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 				return;
 			}
 
+			if (subcommand === "deny-path") {
+				const pathPattern = parts[1];
+				if (!pathPattern) {
+					ctx.ui.notify(`Usage: /whitelist deny-path <glob>\nExample: /whitelist deny-path ".env*"\nDenies Read/Edit/Write for matching file paths.`, "info");
+					return;
+				}
+				for (const tool of FILE_TOOLS) {
+					manager.addRule({ toolName: tool, ruleContent: pathPattern }, "deny", "session");
+				}
+				ctx.ui.notify(`⛔ Denied path: ${pathPattern} (applies to Read/Edit/Write, session-only)`, "info");
+				return;
+			}
+
 			if (subcommand === "mode") {
 				const newMode = parts[1];
 				if (!newMode || !["default", "bypassPermissions", "plan", "acceptEdits", "dontAsk"].includes(newMode)) {
@@ -228,7 +265,7 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 			}
 
 			ctx.ui.notify(
-				`Usage:\n  /whitelist status              — Show current rules\n  /whitelist allow <Tool> [pattern] — Allow a tool\n  /whitelist deny <Tool> [pattern]  — Deny a tool\n  /whitelist mode <mode>           — Set permission mode`,
+				`Usage:\n  /whitelist status                — Show current rules\n  /whitelist allow <Tool> [pattern] — Allow a tool\n  /whitelist deny <Tool> [pattern]   — Deny a tool\n  /whitelist deny-path <glob>       — Deny Read/Edit/Write for path pattern\n  /whitelist mode <mode>            — Set permission mode`,
 				"info",
 			);
 		},

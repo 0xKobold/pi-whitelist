@@ -56,6 +56,8 @@ export const permissionSettingsSchema = z.object({
         allow: z.array(z.string()).default([]),
         deny: z.array(z.string()).default([]),
         ask: z.array(z.string()).default([]),
+        /** Path glob patterns to deny for Read/Edit/Write tools. Expanded into deny rules on load. */
+        denyPaths: z.array(z.string()).default([]),
         additionalDirectories: z.array(z.string()).default([]),
     }),
 });

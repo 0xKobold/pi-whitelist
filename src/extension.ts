@@ -32,20 +32,15 @@ function generatePattern(content: string): string {
 	return content;
 }
 
-/** Normalize tool names to PascalCase as used in rules */
-function normalizeToolName(name: string): string {
-	return name.charAt(0).toUpperCase() + name.slice(1);
-}
-
 /** Extract ruleContent from a tool call event input */
 function extractRuleContent(toolName: string, input: Record<string, unknown>): string | undefined {
-	switch (toolName) {
-		case "Bash":
+	switch (toolName.toLowerCase()) {
+		case "bash":
 			return (input.command as string) ?? undefined;
-		case "Edit":
-		case "Write":
+		case "edit":
+		case "write":
 			return (input.path as string) ?? (input.file_path as string) ?? undefined;
-		case "Read":
+		case "read":
 			return (input.path as string) ?? (input.file_path as string) ?? undefined;
 		default:
 			return undefined;
@@ -124,11 +119,11 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 		for (const rule of projectRules.ask ?? []) manager.addRule(parseRuleString(rule), "ask", "projectSettings");
 	}
 
-	log.info(`Ready — mode: ${mode}`);
+	log.info(`Ready — mode: ${mode}, global rules: ${globalRules ? (globalRules.allow?.length ?? 0) + (globalRules.deny?.length ?? 0) : 0}, project rules: ${projectRules ? (projectRules.allow?.length ?? 0) + (projectRules.deny?.length ?? 0) : 0}`);
 
 	// ──── Tool Call Gate ────
 	pi.on("tool_call", async (event: any, ctx: ExtensionContext) => {
-		const toolName = normalizeToolName(event.toolName);
+		const toolName = event.toolName as string;
 		const ruleContent = extractRuleContent(toolName, event.input as Record<string, unknown>);
 
 		const decision = manager.check({ toolName, ruleContent });
@@ -145,7 +140,7 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 			};
 		}
 
-		// behavior === "ask"
+		// behavior === "ask" — prompt user
 		if (!ctx.hasUI) {
 			return {
 				block: true,
@@ -213,8 +208,7 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 					ctx.ui.notify(`Usage: /whitelist ${subcommand} <ToolName> [pattern]\nExample: /whitelist allow Bash "git *"`, "info");
 					return;
 				}
-				const ruleValue = parseRuleString(toolStr);
-				manager.addRule(ruleValue, behavior, "session");
+				manager.addRule(parseRuleString(toolStr), behavior, "session");
 				ctx.ui.notify(`✅ Added ${behavior} rule: ${toolStr} (session)`, "info");
 				return;
 			}
@@ -240,5 +234,5 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 		},
 	});
 
-	log.info("Extension loaded — /whitelist command registered");
+	log.info("Extension loaded — /whitelist command registered, tool_call gate active");
 }

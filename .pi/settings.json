@@ -2,7 +2,20 @@
   "permissions": {
     "allow": [
       "Kobold_status",
-      "Bash(cd *)"
+      "Bash(cd *)",
+      "Git_package_init",
+      "Bash(cat /home/moika/Documents/code/pi-whitelist/src/extension.ts)",
+      "Bash(grep -n \"defaultMode\\\\|bypass\" /home/moika/Documents/code/pi-whitelist/dist/extension.js)",
+      "Bash(grep -n \"isReadOnly\\\\|read.only\\\\|READ_ONLY\" /home/moika/Documents/code/pi-whitelist/dist/manager.js | head -10)",
+      "Bash(cat /home/moika/Documents/code/pi-whitelist/dist/readonly.js)",
+      "Bash(grep -n \"tool_call\\\\|pi\\\\.on\\\\|async.*event\" /home/moika/Documents/code/pi-whitelist/dist/extension.js)",
+      "Edit(/home/moika/Documents/code/pi-whitelist/src/readonly.ts)",
+      "Edit(/home/moika/Documents/code/pi-whitelist/src/extension.ts)",
+      "Bash(cat /home/moika/.local/share/mise/installs/node/25.1.0/lib/node_modules/@0xkobold/pi-kobold/dist/index.js | head -5)",
+      "Bash(grep -n \"pi\\\\.on\\\\|registerCommand\\\\|registerTool\\\\|export default\" /home/moika/.local/share/mise/installs/node/25.1.0/lib/node_modules/@0xkobold/pi-kobold/dist/index.js | head -20)",
+      "Bash(cat /home/moika/.local/share/mise/installs/node/25.1.0/lib/node_modules/@0xkobold/pi-kobold/package.json | python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('pi',{}\\), indent=2\\)\\)\")",
+      "Write(/home/moika/Documents/code/pi-whitelist/src/extension.ts)",
+      "Bash(pi *)"
     ],
     "deny": [],
     "ask": [],

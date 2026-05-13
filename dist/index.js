@@ -15,6 +15,12 @@ export { DANGEROUS_PATTERNS } from './dangerous.js';
 export { DEFAULT_ALLOW_RULES, SOURCE_PRECEDENCE } from './constants.js';
 // Deny paths utility
 export { expandDenyPaths, FILE_TOOLS } from './deny-paths.js';
+// Smart pattern suggestions
+export { suggestBashPatterns, suggestFilePatterns, generateSmartDefault } from './smart-patterns.js';
+// Progressive learning
+export { createPrefixTracker, recordAllowOnce } from './progressive-learning.js';
+// Dangerous override
+export { checkDangerousOverride, DANGEROUS_PATTERNS as DANGEROUS_OVERRIDE_PATTERNS } from './dangerous-override.js';
 // Errors
 export { PermissionError, RuleParseError, StorageError, MatcherError } from './errors.js';
 //# sourceMappingURL=index.js.map

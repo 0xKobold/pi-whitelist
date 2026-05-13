@@ -3,8 +3,8 @@
  *
  * Gates all tool calls through the tri-state permission system (allow/deny/ask).
  * Reads rules from .pi/settings.json, .pi/settings.local.json, and ~/.pi/agent/settings.json.
- * Supports denyPaths — gitignore-style path globs that auto-expand to deny rules.
- * Prompts user for "ask" decisions with numbered options (1/2/3).
+ * Supports denyPaths, smart pattern suggestions, progressive learning, and dangerous overrides.
+ * Prompts user with numbered options (1/2/3).
  * Registers /whitelist command for managing rules.
  */
 
@@ -18,6 +18,9 @@ import {
 	expandDenyPaths,
 	FILE_TOOLS,
 } from "./deny-paths.js";
+import { suggestBashPatterns, suggestFilePatterns, generateSmartDefault } from "./smart-patterns.js";
+import { createPrefixTracker, recordAllowOnce } from "./progressive-learning.js";
+import { checkDangerousOverride } from "./dangerous-override.js";
 import type { PermissionBehavior, PermissionRuleValue, PermissionMode } from "./types/index.js";
 
 import { homedir } from "node:os";
@@ -28,14 +31,6 @@ const log = {
 	info: (msg: string, ...args: unknown[]) => console.log(`[pi-whitelist] ${msg}`, ...args),
 	warn: (msg: string, ...args: unknown[]) => console.warn(`[pi-whitelist] ${msg}`, ...args),
 };
-
-/** Generate a glob pattern from a concrete value for "always allow" rules */
-function generatePattern(content: string): string {
-	if (/[*.?{}[\]]/.test(content)) return content;
-	if (content.includes(" ")) return `${content.split(" ")[0]} *`;
-	if (content.startsWith("/")) return `${content}/**`;
-	return content;
-}
 
 /** Extract ruleContent from a tool call event input */
 function extractRuleContent(toolName: string, input: Record<string, unknown>): string | undefined {
@@ -52,7 +47,7 @@ function extractRuleContent(toolName: string, input: Record<string, unknown>): s
 	}
 }
 
-/** Read permission settings (allow/deny/ask/denyPaths) from a JSON file */
+/** Read permission settings from a JSON file */
 function readPermissionSettings(filePath: string): {
 	allow: string[]
 	deny: string[]
@@ -142,6 +137,9 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 		isBypassPermissionsModeAvailable: true,
 	});
 
+	// Progressive learning tracker
+	const tracker = createPrefixTracker(3);
+
 	// Load rules from settings files (lowest to highest priority)
 	const globalStats = loadSettingsIntoManager(globalSettingsPath, manager, "userSettings");
 	const projectStats = loadSettingsIntoManager(projectSettingsPath, manager, "projectSettings");
@@ -154,6 +152,31 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 		const toolName = event.toolName as string;
 		const ruleContent = extractRuleContent(toolName, event.input as Record<string, unknown>);
 
+		// Step 1: Dangerous override — always re-prompt for dangerous commands
+		const dangerousOverride = checkDangerousOverride(toolName, ruleContent);
+		if (dangerousOverride) {
+			if (!ctx.hasUI) {
+				return { block: true, reason: dangerousOverride.message };
+			}
+			const label = ruleContent ? `${toolName}: ${ruleContent}` : toolName;
+			const choice = await ctx.ui.select(
+				`⚠️ ${label}\n\nThis matches a dangerous pattern. Allow anyway?`,
+				["1 Allow once (dangerous)", "2 Allow always (dangerous)", "3 Deny"],
+			);
+
+			if (choice?.startsWith("2")) {
+				const pattern = generateSmartDefault(toolName, ruleContent);
+				manager.addRule({ toolName, ruleContent: pattern }, "allow", "localSettings");
+				try { persistRule(localSettingsPath, { toolName, ruleContent: pattern }, "allow"); } catch (err) { log.warn(`Failed to persist: ${err}`); }
+				return undefined;
+			}
+			if (choice?.startsWith("1")) {
+				return undefined;
+			}
+			return { block: true, reason: `Blocked dangerous command: ${label}` };
+		}
+
+		// Step 2: Normal permission check
 		const decision = manager.check({ toolName, ruleContent });
 
 		if (decision.behavior === "allow") {
@@ -177,30 +200,78 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 		}
 
 		const label = ruleContent ? `${toolName}: ${ruleContent}` : toolName;
-		const choice = await ctx.ui.select(
-			`🔐 ${label}`,
-			["1 Allow once", "2 Allow always", "3 Deny"],
-		);
 
-		if (choice?.startsWith("1")) {
-			// Allow once — no persistence
-			return undefined;
+		// Generate smart pattern suggestions for "Allow always"
+		const suggestions = toolName.toLowerCase() === "bash"
+			? suggestBashPatterns(ruleContent ?? "")
+			: ["edit", "write", "read"].includes(toolName.toLowerCase())
+				? suggestFilePatterns(ruleContent ?? "")
+				: [];
+
+		// Build options: 1=Allow once, 2-N=Allow always (specific → broad), last=Deny
+		const options: string[] = ["1 Allow once"];
+
+		if (suggestions.length > 0) {
+			for (let i = 0; i < suggestions.length; i++) {
+				const s = suggestions[i];
+				const num = i + 2;
+				options.push(`${num} Always: ${s.label}`);
+			}
+		} else {
+			// No smart suggestions — offer a simple "always"
+			options.push("2 Allow always");
 		}
 
-		if (choice?.startsWith("2")) {
-			// Allow always — persist the rule to local settings (gitignored)
-			const pattern = ruleContent ? generatePattern(ruleContent) : undefined;
-			manager.addRule({ toolName, ruleContent: pattern }, "allow", "localSettings");
-			try {
-				persistRule(localSettingsPath, { toolName, ruleContent: pattern }, "allow");
-			} catch (err) {
-				log.warn(`Failed to persist rule: ${err}`);
+		options.push(`${options.length + 1} Deny`);
+
+		const choice = await ctx.ui.select(`🔐 ${label}`, options);
+
+		// Allow once (option 1)
+		if (choice?.startsWith("1")) {
+			// Record for progressive learning
+			const suggestion = recordAllowOnce(tracker, toolName, ruleContent);
+			if (suggestion) {
+				// We've seen this prefix 3+ times — suggest allowing it
+				const autoAccept = await ctx.ui.select(
+					`💡 You've allowed ${suggestion.count}x similar commands.\n\nAllow ${suggestion.rule} always?`,
+					["1 Yes", "2 No"],
+				);
+				if (autoAccept === "1 Yes") {
+					manager.addRule(parseRuleString(suggestion.rule), "allow", "localSettings");
+					try { persistRule(localSettingsPath, parseRuleString(suggestion.rule), "allow"); } catch (err) { log.warn(`Failed to persist: ${err}`); }
+				}
 			}
 			return undefined;
 		}
 
-		// Deny (3 or cancelled)
-		return { block: true, reason: `Blocked by user: ${label}` };
+		// Deny (last option)
+		if (choice?.endsWith("Deny") || choice === null) {
+			return { block: true, reason: `Blocked by user: ${label}` };
+		}
+
+		// Allow always — extract the pattern from the option text
+		// Option format: "2 Always: git push * (all git push)" or "2 Allow always"
+		if (suggestions.length > 0) {
+			// Find which suggestion was selected by checking the number prefix
+			const selectedNum = parseInt(choice?.charAt(0) ?? "0", 10);
+			const suggestionIndex = selectedNum - 2; // offset by the "1 Allow once" option
+			if (suggestionIndex >= 0 && suggestionIndex < suggestions.length) {
+				const pattern = suggestions[suggestionIndex].pattern;
+				manager.addRule({ toolName, ruleContent: pattern }, "allow", "localSettings");
+				try { persistRule(localSettingsPath, { toolName, ruleContent: pattern }, "allow"); } catch (err) { log.warn(`Failed to persist: ${err}`); }
+				return undefined;
+			}
+		}
+
+		// Simple "Allow always" — use smart default
+		if (choice?.includes("Allow always")) {
+			const pattern = generateSmartDefault(toolName, ruleContent);
+			manager.addRule({ toolName, ruleContent: pattern }, "allow", "localSettings");
+			try { persistRule(localSettingsPath, { toolName, ruleContent: pattern }, "allow"); } catch (err) { log.warn(`Failed to persist: ${err}`); }
+			return undefined;
+		}
+
+		return undefined;
 	});
 
 	// ──── /whitelist Command ────

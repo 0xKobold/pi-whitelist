@@ -31,6 +31,12 @@ const log = {
 	warn: (msg: string, ...args: unknown[]) => console.warn(`[pi-whitelist] ${msg}`, ...args),
 };
 
+/** Check if a select choice matches a numbered option by its prefix */
+function isChoice(choice: string | undefined, num: number): boolean {
+	if (!choice) return false;
+	return choice.startsWith(`${num} `) || choice.startsWith(`${num}.`);
+}
+
 /** Extract ruleContent from a tool call event input */
 function extractRuleContent(toolName: string, input: Record<string, unknown>): string | undefined {
 	switch (toolName.toLowerCase()) {
@@ -160,16 +166,16 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 			const label = ruleContent ? `${toolName}: ${ruleContent}` : toolName;
 			const choice = await ctx.ui.select(
 				`⚠️  ${label}\n\nDangerous command. Allow anyway?`,
-				["Allow once", "Allow always", "Deny"],
+				["1 Allow once", "2 Allow always", "3 Deny"],
 			);
 
-			if (choice === "Allow always") {
+			if (isChoice(choice, 2)) {
 				const pattern = generateSmartDefault(toolName, ruleContent);
 				manager.addRule({ toolName, ruleContent: pattern }, "allow", "localSettings");
 				try { persistRule(localSettingsPath, { toolName, ruleContent: pattern }, "allow"); } catch (err) { log.warn(`Failed to persist: ${err}`); }
 				return undefined;
 			}
-			if (choice === "Allow once") {
+			if (isChoice(choice, 1)) {
 				return undefined;
 			}
 			return { block: true, reason: `Blocked dangerous command: ${label}` };
@@ -207,15 +213,14 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 				? suggestFilePatterns(ruleContent ?? "")
 				: [];
 
-		// Build options
+		// ── No smart suggestions: simple 3-option prompt ──
 		if (suggestions.length === 0) {
-			// Simple tri-state: Allow once / Allow always / Deny
 			const choice = await ctx.ui.select(
 				`🔐 ${label}`,
-				["Allow once", "Allow always", "Deny"],
+				["1 Allow once", "2 Allow always", "3 Deny"],
 			);
 
-			if (choice === "Allow once") {
+			if (isChoice(choice, 1)) {
 				// Check progressive learning
 				const suggestion = recordAllowOnce(tracker, toolName, ruleContent);
 				if (suggestion) {
@@ -231,28 +236,43 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 				return undefined;
 			}
 
-			if (choice === "Allow always") {
+			if (isChoice(choice, 2)) {
 				const pattern = generateSmartDefault(toolName, ruleContent);
 				manager.addRule({ toolName, ruleContent: pattern }, "allow", "localSettings");
 				try { persistRule(localSettingsPath, { toolName, ruleContent: pattern }, "allow"); } catch (err) { log.warn(`Failed to persist: ${err}`); }
 				return undefined;
 			}
 
-			// Deny or cancelled
+			// Deny (3) or cancelled
 			return { block: true, reason: `Blocked by user: ${label}` };
 		}
 
-		// Smart suggestions available — specific then broad
+		// ── Smart suggestions available ──
 		const specificSuggestion = suggestions[0]; // e.g. "git push *"
 		const broadSuggestion = suggestions[suggestions.length - 1]; // e.g. "git *"
 
-		// First: simple allow/deny, then follow up for scope if "always"
-		const quickChoice = await ctx.ui.select(
-			`🔐 ${label}`,
-			["Allow once", "Allow always", "Deny"],
-		);
+		// Build options: Allow once, specific scope, broad scope (if different), Deny
+		const options: string[] = ["1 Allow once"];
 
-		if (quickChoice === "Allow once") {
+		if (specificSuggestion && broadSuggestion && specificSuggestion.pattern !== broadSuggestion.pattern) {
+			// Two scope levels
+			options.push(`2 Always: ${specificSuggestion.label}`);
+			options.push(`3 Always: ${broadSuggestion.label}`);
+			options.push("4 Deny");
+		} else if (specificSuggestion) {
+			// One scope level
+			options.push(`2 Always: ${specificSuggestion.label}`);
+			options.push("3 Deny");
+		} else {
+			// Fallback
+			options.push("2 Allow always");
+			options.push("3 Deny");
+		}
+
+		const choice = await ctx.ui.select(`🔐 ${label}`, options);
+
+		// Allow once (1)
+		if (isChoice(choice, 1)) {
 			const suggestion = recordAllowOnce(tracker, toolName, ruleContent);
 			if (suggestion) {
 				const autoAccept = await ctx.ui.confirm(
@@ -267,37 +287,22 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 			return undefined;
 		}
 
-		if (quickChoice === "Deny" || quickChoice === undefined) {
-			return { block: true, reason: `Blocked by user: ${label}` };
-		}
-
-		// "Allow always" — ask for scope
-		if (specificSuggestion && broadSuggestion && specificSuggestion.pattern !== broadSuggestion.pattern) {
-			// More than one scope level — let user choose
-			const scopeChoice = await ctx.ui.select(
-				`Allow always — which scope?`,
-				[specificSuggestion.label, broadSuggestion.label],
-			);
-
-			if (scopeChoice === broadSuggestion.label) {
-				manager.addRule({ toolName, ruleContent: broadSuggestion.pattern }, "allow", "localSettings");
-				try { persistRule(localSettingsPath, { toolName, ruleContent: broadSuggestion.pattern }, "allow"); } catch (err) { log.warn(`Failed to persist: ${err}`); }
-			} else {
-				manager.addRule({ toolName, ruleContent: specificSuggestion.pattern }, "allow", "localSettings");
-				try { persistRule(localSettingsPath, { toolName, ruleContent: specificSuggestion.pattern }, "allow"); } catch (err) { log.warn(`Failed to persist: ${err}`); }
-			}
-		} else if (specificSuggestion) {
-			// Only one suggestion level
+		// Specific scope (2)
+		if (isChoice(choice, 2)) {
 			manager.addRule({ toolName, ruleContent: specificSuggestion.pattern }, "allow", "localSettings");
 			try { persistRule(localSettingsPath, { toolName, ruleContent: specificSuggestion.pattern }, "allow"); } catch (err) { log.warn(`Failed to persist: ${err}`); }
-		} else {
-			// Fallback — use smart default
-			const pattern = generateSmartDefault(toolName, ruleContent);
-			manager.addRule({ toolName, ruleContent: pattern }, "allow", "localSettings");
-			try { persistRule(localSettingsPath, { toolName, ruleContent: pattern }, "allow"); } catch (err) { log.warn(`Failed to persist: ${err}`); }
+			return undefined;
 		}
 
-		return undefined;
+		// Broad scope (3) — only if we have both scope levels
+		if (isChoice(choice, 3) && specificSuggestion && broadSuggestion && specificSuggestion.pattern !== broadSuggestion.pattern) {
+			manager.addRule({ toolName, ruleContent: broadSuggestion.pattern }, "allow", "localSettings");
+			try { persistRule(localSettingsPath, { toolName, ruleContent: broadSuggestion.pattern }, "allow"); } catch (err) { log.warn(`Failed to persist: ${err}`); }
+			return undefined;
+		}
+
+		// Deny (last option) or cancelled
+		return { block: true, reason: `Blocked by user: ${label}` };
 	});
 
 	// ──── /whitelist Command ────

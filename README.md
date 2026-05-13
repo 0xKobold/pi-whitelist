@@ -2,7 +2,7 @@
 
 > Tri-state tool permission system (allow/deny/ask) for AI agent tool invocations
 
-Inspired by [Claude Code's permission architecture](https://github.com/0xKobold/claude-code), packaged as a standalone, runtime-agnostic npm module.
+A standalone, runtime-agnostic npm module for controlling AI agent tool invocations.
 
 ## Why?
 

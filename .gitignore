@@ -3,3 +3,5 @@ dist/
 *.tsbuildinfo
 coverage/
 .DS_Store
+.pi/settings.json
+.pi/settings.local.json

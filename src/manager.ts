@@ -226,6 +226,10 @@ export class PermissionManager {
     this.invalidateCache()
   }
 
+  getMode(): PermissionMode {
+    return this._mode
+  }
+
   setMode(mode: PermissionMode): void {
     this._mode = mode
     this.invalidateCache()

@@ -27,6 +27,7 @@ export declare class PermissionManager {
     private buildAsk;
     addRule(rule: PermissionRuleValue, behavior: PermissionBehavior, source: PermissionRuleSource): void;
     removeRule(rule: PermissionRuleValue, behavior: PermissionBehavior, source: PermissionRuleSource): void;
+    getMode(): PermissionMode;
     setMode(mode: PermissionMode): void;
     addDirectory(path: string, source: WorkingDirectorySource): void;
     removeDirectory(path: string): void;

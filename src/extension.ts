@@ -208,12 +208,17 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 	const projectStats = loadSettingsIntoManager(projectSettingsPath, manager, "projectSettings");
 	const localStats = loadSettingsIntoManager(localSettingsPath, manager, "localSettings");
 
-	log.info(`Ready — mode: ${mode}, global: ${globalStats ? `${globalStats.totalRules}r + ${globalStats.totalDenyPaths}p` : 'none'}, project: ${projectStats ? `${projectStats.totalRules}r + ${projectStats.totalDenyPaths}p` : 'none'}, local: ${localStats ? `${localStats.totalRules}r + ${localStats.totalDenyPaths}p` : 'none'}`);
+	log.info(`Ready — mode: ${manager.getMode()}, global: ${globalStats ? `${globalStats.totalRules}r + ${globalStats.totalDenyPaths}p` : 'none'}, project: ${projectStats ? `${projectStats.totalRules}r + ${projectStats.totalDenyPaths}p` : 'none'}, local: ${localStats ? `${localStats.totalRules}r + ${localStats.totalDenyPaths}p` : 'none'}`);
 
 	// ──── Tool Call Gate ────
 	pi.on("tool_call", async (event: any, ctx: ExtensionContext) => {
 		const toolName = event.toolName as string;
 		const ruleContent = extractRuleContent(toolName, event.input as Record<string, unknown>);
+
+		// Step 0: Bypass mode — skip all checks, allow everything
+		if (manager.getMode() === 'bypassPermissions') {
+			return undefined;
+		}
 
 		// Step 1: Dangerous override — always re-prompt for dangerous commands
 		const dangerousOverride = checkDangerousOverride(toolName, ruleContent);
@@ -380,14 +385,14 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 
 				if (allRules.length === 0) {
 					ctx.ui.notify(
-						`📋 Whitelist: (no rules)\n\nMode: ${mode}\n\n/whitelist allow|deny|deny-path|mode`,
+						`📋 Whitelist: (no rules)\n\nMode: ${manager.getMode()}\n\n/whitelist allow|deny|deny-path|mode`,
 						"info",
 					);
 				} else {
 					const lines = allRules.map(
 						(r) => `  ${r.ruleBehavior}: ${r.ruleValue.toolName}${r.ruleValue.ruleContent ? `(${r.ruleValue.ruleContent})` : ""} [${r.source}]`,
 					);
-					ctx.ui.notify(`📋 Whitelist (${allRules.length}):\n${lines.join("\n")}\n\nMode: ${mode}`, "info");
+					ctx.ui.notify(`📋 Whitelist (${allRules.length}):\n${lines.join("\n")}\n\nMode: ${manager.getMode()}`, "info");
 				}
 				return;
 			}
@@ -421,7 +426,7 @@ export default async function whitelistExtension(pi: ExtensionAPI): Promise<void
 				const newMode = parts[1];
 				if (!newMode || !["default", "bypassPermissions", "plan", "acceptEdits", "dontAsk"].includes(newMode)) {
 					ctx.ui.notify(
-						`Mode: ${mode}\n\nOptions: default, bypassPermissions, plan, acceptEdits, dontAsk`,
+						`Mode: ${manager.getMode()}\n\nOptions: default · bypassPermissions (off) · plan · acceptEdits · dontAsk`,
 						"info",
 					);
 					return;

@@ -170,6 +170,9 @@ export class PermissionManager {
         }
         this.invalidateCache();
     }
+    getMode() {
+        return this._mode;
+    }
     setMode(mode) {
         this._mode = mode;
         this.invalidateCache();
